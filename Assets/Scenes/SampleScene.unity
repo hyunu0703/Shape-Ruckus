@@ -395,9 +395,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: e66dc12af7e7926488052683c7230260, type: 3}
   m_Name:
   m_EditorClassIdentifier: Assembly-CSharp::SharedSession
-  _playerPrefab: {fileID: 0}
-  _menuScenePath: Assets/Scenes/MainMenu.unity
-  _gameScenePath: Assets/Scenes/GameTest.unity
+  playerPrefab: {fileID: 0}
+  menuScenePath: Assets/Scenes/MainMenu.unity
+  gameScenePath: Assets/Scenes/GameTest.unity
 --- !u!4 &838933625
 Transform:
   m_ObjectHideFlags: 0

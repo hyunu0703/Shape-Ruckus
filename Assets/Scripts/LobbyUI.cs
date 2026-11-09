@@ -12,234 +12,455 @@ using UnityEngine.UI;
 /// </summary>
 public sealed class LobbyUI : MonoBehaviour
 {
-    [SerializeField] private SharedSession _session;
-    [SerializeField] private Canvas _canvas;
-    [SerializeField] private GameObject _startPanel;
-    [SerializeField] private GameObject _lobbyPanel;
-    [SerializeField] private GameObject _roomPanel;
-    [SerializeField] private GameObject _createPopup;
-    [SerializeField] private CanvasGroup _lobbyControls;
-    [SerializeField] private TMP_Text _status;
-    [SerializeField] private TMP_Text _emptyList;
-    [SerializeField] private RectTransform _listContent;
-    [SerializeField] private RoomListItem _roomItemPrefab;
-    [SerializeField] private TMP_InputField _roomName;
-    [SerializeField] private TMP_Text _createError;
-    [SerializeField] private TMP_Text _roomTitle;
-    [SerializeField] private TMP_Text _playerCount;
-    [SerializeField] private TMP_Text[] _playerSlots;
-    [SerializeField] private TMP_Text _readyLabel;
-    [SerializeField] private Button _online;
-    [SerializeField] private Button _quit;
-    [SerializeField] private Button _back;
-    [SerializeField] private Button _refresh;
-    [SerializeField] private Button _openCreate;
-    [SerializeField] private Button _create;
-    [SerializeField] private Button _cancelCreate;
-    [SerializeField] private Button _ready;
-    [SerializeField] private Button _startGame;
-    [SerializeField] private Button _leave;
-    private readonly List<RoomListItem> _items = new List<RoomListItem>();
-    private Coroutine _refreshCooldown;
+    // 네트워크 상태와 공통 화면 표시
+    [SerializeField] private SharedSession session;
+    [SerializeField] private Canvas canvas;
+    [SerializeField] private TMP_Text status;
+
+    // 시작 화면과 접속 및 종료 입력
+    [SerializeField] private GameObject startPanel;
+    [SerializeField] private Button online;
+    [SerializeField] private Button quit;
+
+    // 로비 화면과 탐색 입력
+    [SerializeField] private GameObject lobbyPanel;
+    [SerializeField] private CanvasGroup lobbyControls;
+    [SerializeField] private Button back;
+    [SerializeField] private Button refresh;
+    [SerializeField] private Button openCreate;
+    private Coroutine refreshCooldown;
+
+    // 로비 방 목록 표시와 항목 재사용
+    [SerializeField] private TMP_Text emptyList;
+    [SerializeField] private RectTransform listContent;
+    [SerializeField] private RoomListItem roomItemPrefab;
+    private readonly List<RoomListItem> items = new List<RoomListItem>();
+
+    // 방 생성 팝업과 이름 입력 및 오류 표시
+    [SerializeField] private GameObject createPopup;
+    [SerializeField] private TMP_InputField roomName;
+    [SerializeField] private TMP_Text createError;
+    [SerializeField] private Button create;
+    [SerializeField] private Button cancelCreate;
+
+    // 방 대기실 정보와 플레이어 목록 표시
+    [SerializeField] private GameObject roomPanel;
+    [SerializeField] private TMP_Text roomTitle;
+    [SerializeField] private TMP_Text playerCount;
+    [SerializeField] private TMP_Text[] playerSlots;
+
+    // 준비 상태와 게임 시작 및 퇴장 입력
+    [SerializeField] private TMP_Text readyLabel;
+    [SerializeField] private Button ready;
+    [SerializeField] private Button startGame;
+    [SerializeField] private Button leave;
+
+    // 필수 참조 검증과 이벤트 구독 상태 및 반복 라벨 접근 캐시
+    private bool isConfigured;
+    private bool isSubscribed;
+    private TMP_Text onlineLabel;
+    private TMP_Text refreshLabel;
+
 
     // 필수 UI 참조 검증
     private void Awake()
     {
-        if (_session == null || _canvas == null || _startPanel == null || _lobbyPanel == null ||
-            _roomPanel == null || _roomItemPrefab == null || _listContent == null || _roomName == null ||
-            _playerSlots == null || _playerSlots.Length != SharedSession.MaxPlayers)
+        // 화면 구성에 필요한 참조와 10개 슬롯 확인 후 누락 시 UI 동작 중단
+        UnityEngine.Object[] required =
         {
-            Debug.LogError("LobbyUI의 필수 Scene 참조 누락", this);
-            enabled = false;
+            this.session, this.canvas, this.status, this.startPanel, this.online, this.quit,
+            this.lobbyPanel, this.lobbyControls, this.back, this.refresh, this.openCreate,
+            this.emptyList, this.listContent, this.roomItemPrefab, this.createPopup,
+            this.roomName, this.createError, this.create, this.cancelCreate, this.roomPanel,
+            this.roomTitle, this.playerCount, this.readyLabel, this.ready, this.startGame, this.leave
+        };
+
+        foreach (UnityEngine.Object reference in required)
+        {
+            if (reference == null)
+            {
+                Debug.LogError("LobbyUI의 필수 Scene 참조 누락", this);
+                enabled = false;
+                return;
+            }
         }
+
+        if (this.playerSlots == null || this.playerSlots.Length != SharedSession.MaxPlayers)
+        {
+            Debug.LogError("LobbyUI의 플레이어 슬롯 10개 설정 필요", this);
+            enabled = false;
+            return;
+        }
+
+        foreach (TMP_Text slot in this.playerSlots)
+        {
+            if (slot == null)
+            {
+                Debug.LogError("LobbyUI의 플레이어 슬롯 텍스트 누락", this);
+                enabled = false;
+                return;
+            }
+        }
+
+        // 초기 비활성 Panel의 라벨도 포함하여 한 번만 검색
+        this.onlineLabel = this.online.GetComponentInChildren<TMP_Text>(true);
+        this.refreshLabel = this.refresh.GetComponentInChildren<TMP_Text>(true);
+
+        if (this.onlineLabel == null || this.refreshLabel == null)
+        {
+            Debug.LogError("LobbyUI의 버튼 라벨 누락", this);
+            enabled = false;
+            return;
+        }
+
+        this.isConfigured = true;
     }
+
 
     // 화면 활성 기간의 네트워크 및 버튼 이벤트 구독
     private void OnEnable()
     {
-        if (_session == null) { return; }
-        _session.Changed += Render;
-        _session.SessionListChanged += RenderSessions;
-        _online.onClick.AddListener(OnOnline);
-        _quit.onClick.AddListener(OnQuit);
-        _back.onClick.AddListener(OnBack);
-        _refresh.onClick.AddListener(OnRefresh);
-        _openCreate.onClick.AddListener(OpenCreate);
-        _create.onClick.AddListener(OnCreate);
-        _cancelCreate.onClick.AddListener(CloseCreate);
-        _ready.onClick.AddListener(_session.ToggleReady);
-        _startGame.onClick.AddListener(_session.StartMatch);
-        _leave.onClick.AddListener(OnLeave);
+        // 필수 참조 검증 실패와 중복 구독 및 세션 참조 소멸 시 연결 생략
+        if (!this.isConfigured || this.isSubscribed || this.session == null)
+        {
+            return;
+        }
+
+        // 네트워크 변경을 화면 갱신에 연결하고 버튼 입력을 세션 작업에 연결
+        this.isSubscribed = true;
+        this.session.Changed += Render;
+        this.session.SessionListChanged += RenderSessions;
+        this.online.onClick.AddListener(OnOnline);
+        this.quit.onClick.AddListener(OnQuit);
+        this.back.onClick.AddListener(OnBack);
+        this.refresh.onClick.AddListener(OnRefresh);
+        this.openCreate.onClick.AddListener(OpenCreate);
+        this.create.onClick.AddListener(OnCreate);
+        this.cancelCreate.onClick.AddListener(CloseCreate);
+        this.ready.onClick.AddListener(this.session.ToggleReady);
+        this.startGame.onClick.AddListener(this.session.StartMatch);
+        this.leave.onClick.AddListener(OnLeave);
+
+        // 현재 데이터로 화면 초기화 후 재활성화 이전의 새로고침 대기 복원
         RenderSessions();
         Render();
         EnsureRefreshCooldown();
     }
 
+
     // 비활성화 시 구독과 단일 새로고침 대기 해제
     private void OnDisable()
     {
-        if (_session != null)
+        // Awake 검증 실패로 구독 전 비활성화된 경우 부분 참조 접근 차단
+        if (!this.isSubscribed)
         {
-            _session.Changed -= Render;
-            _session.SessionListChanged -= RenderSessions;
-            _ready.onClick.RemoveListener(_session.ToggleReady);
-            _startGame.onClick.RemoveListener(_session.StartMatch);
+            return;
         }
-        _online.onClick.RemoveListener(OnOnline);
-        _quit.onClick.RemoveListener(OnQuit);
-        _back.onClick.RemoveListener(OnBack);
-        _refresh.onClick.RemoveListener(OnRefresh);
-        _openCreate.onClick.RemoveListener(OpenCreate);
-        _create.onClick.RemoveListener(OnCreate);
-        _cancelCreate.onClick.RemoveListener(CloseCreate);
-        _leave.onClick.RemoveListener(OnLeave);
-        if (_refreshCooldown != null)
+
+        this.isSubscribed = false;
+
+        // 세션이 남아 있는 경우 네트워크 이벤트와 세션 버튼 연결 해제
+        if (this.session != null)
         {
-            StopCoroutine(_refreshCooldown);
-            _refreshCooldown = null;
+            this.session.Changed -= Render;
+            this.session.SessionListChanged -= RenderSessions;
+            this.ready.onClick.RemoveListener(this.session.ToggleReady);
+            this.startGame.onClick.RemoveListener(this.session.StartMatch);
+        }
+
+        // 재활성화 시 클릭이 중복 처리되지 않도록 나머지 버튼 구독 해제
+        this.online.onClick.RemoveListener(OnOnline);
+        this.quit.onClick.RemoveListener(OnQuit);
+        this.back.onClick.RemoveListener(OnBack);
+        this.refresh.onClick.RemoveListener(OnRefresh);
+        this.openCreate.onClick.RemoveListener(OpenCreate);
+        this.create.onClick.RemoveListener(OnCreate);
+        this.cancelCreate.onClick.RemoveListener(CloseCreate);
+        this.leave.onClick.RemoveListener(OnLeave);
+
+        // 중단된 대기의 실행 핸들까지 정리하여 다음 예약 허용
+        if (this.refreshCooldown != null)
+        {
+            StopCoroutine(this.refreshCooldown);
+            this.refreshCooldown = null;
         }
     }
+
 
     // 네트워크 상태에 따른 Panel과 입력 가능 상태 반영
     private void Render()
     {
-        if (_session == null) { return; }
-        SharedSession.Screen screen = _session.CurrentScreen;
-        bool idle = !_session.IsBusy && !_session.IsSceneLoading;
-        _canvas.enabled = screen != SharedSession.Screen.Game;
-        _startPanel.SetActive(screen == SharedSession.Screen.Start);
-        _lobbyPanel.SetActive(screen == SharedSession.Screen.Lobby);
-        _roomPanel.SetActive(screen == SharedSession.Screen.Room || screen == SharedSession.Screen.Loading);
-        if (screen != SharedSession.Screen.Lobby) { _createPopup.SetActive(false); }
-        _status.text = _session.Status;
-        _online.interactable = idle;
-        _quit.interactable = idle;
-        _online.GetComponentInChildren<TMP_Text>().text = _session.Runner == null && _session.Status.Contains("종료") ? "다시 연결" : "온라인 플레이";
-        _lobbyControls.interactable = idle && !_createPopup.activeSelf;
-        _back.interactable = idle;
-        _openCreate.interactable = idle && _session.Runner != null;
-        _refresh.interactable = idle && _session.RefreshRemaining <= 0f;
-        _refresh.GetComponentInChildren<TMP_Text>().text = _session.Runner == null ? "재시도" : "새로고침";
-        _create.interactable = idle && _session.Runner != null;
-        _cancelCreate.interactable = idle;
-        _roomName.interactable = idle;
-        _createError.text = _session.RoomError;
-        _leave.interactable = idle && screen == SharedSession.Screen.Room;
-        _ready.interactable = false;
-        _startGame.interactable = idle && _session.RoomState != null && _session.RoomState.CanStart;
-        RenderPlayers();
-        _emptyList.text = _session.HasSessionList ? "참가 가능한 방이 없습니다." :
-            (_session.Runner == null && idle ? "로비 연결에 실패했습니다. 재시도를 눌러 주세요." : "방 목록을 불러오는 중...");
+        // 세션 참조가 없는 경우 화면 갱신 중단
+        if (this.session == null)
+        {
+            return;
+        }
+
+        // 세션의 화면 단계와 작업 상태를 기준으로 표시 화면과 입력 잠금 결정
+        SharedSession.Screen screen = this.session.CurrentScreen;
+        bool idle = !this.session.IsBusy && !this.session.IsSceneLoading;
+        this.canvas.enabled = screen != SharedSession.Screen.Game;
+        this.startPanel.SetActive(screen == SharedSession.Screen.Start);
+        this.lobbyPanel.SetActive(screen == SharedSession.Screen.Lobby);
+        this.roomPanel.SetActive(screen == SharedSession.Screen.Room || screen == SharedSession.Screen.Loading);
+
+        // 로비를 벗어난 경우 이전 방 생성 모달 숨김
+        if (screen != SharedSession.Screen.Lobby)
+        {
+            this.createPopup.SetActive(false);
+        }
+
+        // 연결 메시지와 복구 버튼을 갱신하고 모달 뒤쪽 입력 차단
+        this.status.text = this.session.Status;
+        this.online.interactable = idle;
+        this.quit.interactable = idle;
+        this.onlineLabel.text = this.session.Runner == null &&
+            this.session.Status.Contains("종료") ? "다시 연결" : "온라인 플레이";
+        this.lobbyControls.interactable = idle && !this.createPopup.activeSelf;
+        this.back.interactable = idle;
+        this.openCreate.interactable = idle && this.session.Runner != null;
+        this.refresh.interactable = idle && this.session.RefreshRemaining <= 0f;
+        this.refreshLabel.text = this.session.Runner == null ? "재시도" : "새로고침";
+        this.create.interactable = idle && this.session.Runner != null;
+        this.cancelCreate.interactable = idle;
+        this.roomName.interactable = idle;
+        this.createError.text = this.session.RoomError;
+
+        // 퇴장과 시작 조건을 반영한 뒤 로컬 플레이어 권한에 맞춰 준비 버튼 갱신
+        this.leave.interactable = idle && screen == SharedSession.Screen.Room;
+        this.ready.interactable = false;
+        this.startGame.interactable = idle && this.session.RoomState != null && this.session.RoomState.CanStart;
+        // 로비 목록 갱신 중에는 숨겨진 대기실의 문자열과 슬롯 갱신 생략
+        if (this.roomPanel.activeSelf)
+        {
+            RenderPlayers();
+        }
+
+        // 목록 수신 여부와 연결 상태에 따라 빈 목록 안내 선택
+        this.emptyList.text = this.session.HasSessionList ? "참가 가능한 방이 없습니다." : (this.session.Runner == null &&
+            idle ? "로비 연결에 실패했습니다. 재시도를 눌러 주세요." : "방 목록을 불러오는 중...");
     }
+
 
     // 최대 10개 고정 슬롯에 현재 활성 플레이어와 방장 및 준비 상태 표시
     private void RenderPlayers()
     {
-        for (int i = 0; i < _playerSlots.Length; i++) { _playerSlots[i].text = $"{i + 1:00}   참가 대기 중"; }
-        NetworkRunner runner = _session.Runner;
-        _roomTitle.text = _session.RoomTitle;
-        _readyLabel.text = "준비";
+        // 퇴장한 플레이어 표시가 남지 않도록 고정 슬롯을 대기 상태로 초기화
+        for (int i = 0; i < this.playerSlots.Length; i++)
+        {
+            this.playerSlots[i].text = $"{i + 1:00}   참가 대기 중";
+        }
+
+        NetworkRunner runner = this.session.Runner;
+        this.roomTitle.text = this.session.RoomTitle;
+        this.readyLabel.text = "준비";
         int count = 0;
-        PlayerRef master = _session.RoomState != null && _session.RoomState.Object.IsValid
-            ? _session.RoomState.Object.StateAuthority : PlayerRef.None;
+
+        // 방 전체 상태 객체의 State Authority에서 현재 방장 식별
+        PlayerRef master = this.session.RoomState != null &&
+            this.session.RoomState.Object != null &&
+            this.session.RoomState.Object.IsValid ? this.session.RoomState.Object.StateAuthority : PlayerRef.None;
+
+        // 실제 활성 참가자만 순회하며 수신된 플레이어 데이터와 결합
         if (runner != null && runner.IsRunning)
         {
             foreach (PlayerRef id in runner.ActivePlayers)
             {
-                if (count >= _playerSlots.Length) { break; }
+                if (count >= this.playerSlots.Length)
+                {
+                    break;
+                }
+
                 string label = $"Player {id.PlayerId}   데이터 수신 중...";
-                if (_session.Players.TryGetValue(id, out PlayerRoomState player) && player != null && player.Object.IsValid)
+
+                if (this.session.Players.TryGetValue(id, out PlayerRoomState player) && player != null &&
+                    player.Object != null && player.Object.IsValid)
                 {
                     label = $"{player.Nickname}   {(id == master ? "[방장]   " : "")}{(player.IsReady ? "준비 완료" : "미준비")}";
+
+                    // 자신의 슬롯에만 준비 버튼 상태와 소유 권한 반영
                     if (id == runner.LocalPlayer)
                     {
                         label += "   (나)";
-                        _readyLabel.text = player.IsReady ? "준비 취소" : "준비";
-                        _ready.interactable = !_session.IsBusy && !_session.IsSceneLoading && _session.CurrentScreen == SharedSession.Screen.Room && player.Object.HasStateAuthority;
+                        this.readyLabel.text = player.IsReady ? "준비 취소" : "준비";
+                        this.ready.interactable = !this.session.IsBusy &&
+                            !this.session.IsSceneLoading &&
+                            this.session.CurrentScreen == SharedSession.Screen.Room &&
+                            player.Object.HasStateAuthority;
                     }
                 }
-                _playerSlots[count].text = $"{count + 1:00}   {label}";
+
+                this.playerSlots[count].text = $"{count + 1:00}   {label}";
                 count++;
             }
         }
-        _playerCount.text = $"{count} / {SharedSession.MaxPlayers}명";
+
+        // 표시한 활성 참가자 수를 방 인원 안내에 전달
+        this.playerCount.text = $"{count} / {SharedSession.MaxPlayers}명";
     }
+
 
     // 필요한 항목만 확장하는 방 목록 Prefab 재사용
     private void RenderSessions()
     {
-        if (_session == null) { return; }
-        IReadOnlyList<SessionInfo> sessions = _session.Sessions;
+        // 목록 공급 세션이 없는 경우 갱신 중단
+        if (this.session == null)
+        {
+            return;
+        }
+
+        IReadOnlyList<SessionInfo> sessions = this.session.Sessions;
+
+        // 최신 목록 크기만큼 기존 항목을 재사용하고 부족한 항목만 생성
         for (int i = 0; i < sessions.Count; i++)
         {
-            if (i == _items.Count) { _items.Add(Instantiate(_roomItemPrefab, _listContent)); }
-            _items[i].gameObject.SetActive(true);
-            _items[i].Bind(sessions[i], OnJoin);
+            if (i == this.items.Count)
+            {
+                this.items.Add(Instantiate(this.roomItemPrefab, this.listContent));
+            }
+
+            this.items[i].gameObject.SetActive(true);
+            this.items[i].Bind(sessions[i], OnJoin);
         }
-        for (int i = sessions.Count; i < _items.Count; i++) { _items[i].gameObject.SetActive(false); }
-        _emptyList.gameObject.SetActive(sessions.Count == 0);
+
+        // 새 목록에서 빠진 항목은 파괴 대신 비활성화하여 다음 갱신에 재사용
+        for (int i = sessions.Count; i < this.items.Count; i++)
+        {
+            this.items[i].gameObject.SetActive(false);
+        }
+
+        // 방이 없는 경우에만 빈 목록 안내 노출
+        this.emptyList.gameObject.SetActive(sessions.Count == 0);
     }
+
 
     // 방 만들기 팝업 표시 및 입력 포커스 이동
     private void OpenCreate()
     {
-        if (_session.IsBusy) { return; }
-        _createPopup.SetActive(true);
+        // 진행 중인 연결 작업이 있는 경우 모달 진입 차단
+        if (this.session.IsBusy)
+        {
+            return;
+        }
+
+        // 모달 표시로 로비 입력을 잠근 뒤 방 이름 입력에 포커스 전달
+        this.createPopup.SetActive(true);
         Render();
-        _roomName.Select();
-        _roomName.ActivateInputField();
+        this.roomName.Select();
+        this.roomName.ActivateInputField();
     }
+
 
     // 입력한 방 이름을 유지하며 팝업 닫기
     private void CloseCreate()
     {
-        if (_session.IsBusy) { return; }
-        _createPopup.SetActive(false);
+        // 방 생성 요청이 끝나기 전 모달 닫기 차단
+        if (this.session.IsBusy)
+        {
+            return;
+        }
+
+        // 입력값은 보존하고 모달을 숨긴 뒤 로비 버튼 상태 복원
+        this.createPopup.SetActive(false);
         Render();
     }
 
+
     // 온라인 버튼의 비동기 입력 전달
-    private async void OnOnline() { await RunAsync(_session.ConnectAsync()); }
+    private async void OnOnline()
+    {
+        // 온라인 버튼 요청을 연결 작업으로 전달하고 UI 경계에서 예외 처리
+        await RunAsync(this.session.ConnectAsync());
+    }
+
+
     // 종료 버튼의 비동기 입력 전달
-    private async void OnQuit() { await RunAsync(_session.QuitAsync()); }
+    private async void OnQuit()
+    {
+        // 종료 버튼 요청을 연결 정리와 앱 종료 처리로 전달
+        await RunAsync(this.session.QuitAsync());
+    }
+
+
     // 뒤로 가기 버튼의 비동기 입력 전달
-    private async void OnBack() { await RunAsync(_session.BackAsync()); }
+    private async void OnBack()
+    {
+        // 뒤로 가기 입력을 로비 연결 종료 작업으로 전달
+        await RunAsync(this.session.BackAsync());
+    }
+
+
     // 방 생성 버튼의 비동기 입력 전달
-    private async void OnCreate() { await RunAsync(_session.CreateRoomAsync(_roomName.text)); }
+    private async void OnCreate()
+    {
+        // 입력 필드의 원본 이름을 세션 검증과 방 생성 작업에 전달
+        await RunAsync(this.session.CreateRoomAsync(this.roomName.text));
+    }
+
+
     // 방 참가 버튼의 비동기 입력 전달
-    private async void OnJoin(string sessionName) { await RunAsync(_session.JoinRoomAsync(sessionName)); }
+    private async void OnJoin(string sessionName)
+    {
+        // 선택한 행의 내부 세션 식별자를 참가 요청에 전달
+        await RunAsync(this.session.JoinRoomAsync(sessionName));
+    }
+
+
     // 방 퇴장 버튼의 비동기 입력 전달
-    private async void OnLeave() { await RunAsync(_session.LeaveRoomAsync()); }
+    private async void OnLeave()
+    {
+        // 퇴장 입력을 현재 방 종료와 로비 복귀 작업에 전달
+        await RunAsync(this.session.LeaveRoomAsync());
+    }
+
 
     // 새로고침 입력과 중복되지 않는 쿨다운 표시 예약
     private async void OnRefresh()
     {
-        Task request = _session.RefreshAsync();
+        // 새로고침 요청을 시작하고 제한 시간 표시를 예약한 뒤 완료 대기
+        Task request = this.session.RefreshAsync();
         EnsureRefreshCooldown();
         await RunAsync(request);
     }
 
+
     // UI 재활성화 시에도 남은 새로고침 제한 시간의 버튼 복원 예약
     private void EnsureRefreshCooldown()
     {
-        if (_refreshCooldown == null && _session != null && _session.RefreshRemaining > 0f)
+        // 남은 제한 시간이 있고 기존 대기가 없는 경우에만 복원 작업 예약
+        if (this.refreshCooldown == null && this.session != null && this.session.RefreshRemaining > 0f)
         {
-            _refreshCooldown = StartCoroutine(WaitForRefresh());
+            this.refreshCooldown = StartCoroutine(WaitForRefresh());
         }
     }
+
 
     // 마지막 새로고침 후 5초 경과 시 버튼 복원
     private IEnumerator WaitForRefresh()
     {
-        while (_session != null && _session.RefreshRemaining > 0f) { yield return new WaitForSecondsRealtime(0.2f); }
-        _refreshCooldown = null;
+        // 게임 시간 배율과 무관하게 남은 새로고침 제한 시간 대기
+        while (this.session != null && this.session.RefreshRemaining > 0f)
+        {
+            yield return new WaitForSecondsRealtime(0.2f);
+        }
+
+        // 대기 핸들을 비운 뒤 최신 상태로 버튼 사용 가능 여부 재계산
+        this.refreshCooldown = null;
         Render();
     }
+
 
     // UI 이벤트 경계의 비동기 예외 기록
     private async Task RunAsync(Task request)
     {
-        try { await request; }
-        catch (Exception exception) { Debug.LogException(exception); }
+        // 전달된 UI 요청의 완료를 기다리고 실패 예외를 Console에 기록
+        try
+        {
+            await request;
+        }
+        catch (Exception exception)
+        {
+            Debug.LogException(exception);
+        }
     }
 }

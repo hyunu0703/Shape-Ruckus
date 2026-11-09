@@ -3329,9 +3329,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: e66dc12af7e7926488052683c7230260, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::SharedSession
-  _playerPrefab: {fileID: 4937124629873310602, guid: 58832b5a1310537478b40aa0c5ad66bb, type: 3}
-  _menuScenePath: Assets/Scenes/MainMenu.unity
-  _gameScenePath: Assets/Scenes/GameTest.unity
+  playerPrefab: {fileID: 4937124629873310602, guid: 58832b5a1310537478b40aa0c5ad66bb, type: 3}
+  menuScenePath: Assets/Scenes/MainMenu.unity
+  gameScenePath: Assets/Scenes/GameTest.unity
 --- !u!4 &838933625
 Transform:
   m_ObjectHideFlags: 0
@@ -3361,22 +3361,22 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: a5fb360470be8664696bc0d2cfd085b4, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::LobbyUI
-  _session: {fileID: 838933624}
-  _canvas: {fileID: 938122631}
-  _startPanel: {fileID: 1074791476}
-  _lobbyPanel: {fileID: 1454305816}
-  _roomPanel: {fileID: 2068411594}
-  _createPopup: {fileID: 515548279}
-  _lobbyControls: {fileID: 1454305818}
-  _status: {fileID: 2146048244}
-  _emptyList: {fileID: 1859354363}
-  _listContent: {fileID: 1539947566}
-  _roomItemPrefab: {fileID: 6744241763806124188, guid: 7689589af4db38d48a932886b231aa19, type: 3}
-  _roomName: {fileID: 1586601124}
-  _createError: {fileID: 1827281264}
-  _roomTitle: {fileID: 1014705602}
-  _playerCount: {fileID: 824083737}
-  _playerSlots:
+  session: {fileID: 838933624}
+  canvas: {fileID: 938122631}
+  startPanel: {fileID: 1074791476}
+  lobbyPanel: {fileID: 1454305816}
+  roomPanel: {fileID: 2068411594}
+  createPopup: {fileID: 515548279}
+  lobbyControls: {fileID: 1454305818}
+  status: {fileID: 2146048244}
+  emptyList: {fileID: 1859354363}
+  listContent: {fileID: 1539947566}
+  roomItemPrefab: {fileID: 6744241763806124188, guid: 7689589af4db38d48a932886b231aa19, type: 3}
+  roomName: {fileID: 1586601124}
+  createError: {fileID: 1827281264}
+  roomTitle: {fileID: 1014705602}
+  playerCount: {fileID: 824083737}
+  playerSlots:
   - {fileID: 1010838133}
   - {fileID: 1257142388}
   - {fileID: 1838492143}
@@ -3387,17 +3387,17 @@ MonoBehaviour:
   - {fileID: 912771259}
   - {fileID: 1185035299}
   - {fileID: 1043835655}
-  _readyLabel: {fileID: 848423785}
-  _online: {fileID: 269827410}
-  _quit: {fileID: 1848338638}
-  _back: {fileID: 21266504}
-  _refresh: {fileID: 788735876}
-  _openCreate: {fileID: 1382579840}
-  _create: {fileID: 284459221}
-  _cancelCreate: {fileID: 1544790734}
-  _ready: {fileID: 247442610}
-  _startGame: {fileID: 489357720}
-  _leave: {fileID: 812746587}
+  readyLabel: {fileID: 848423785}
+  online: {fileID: 269827410}
+  quit: {fileID: 1848338638}
+  back: {fileID: 21266504}
+  refresh: {fileID: 788735876}
+  openCreate: {fileID: 1382579840}
+  create: {fileID: 284459221}
+  cancelCreate: {fileID: 1544790734}
+  ready: {fileID: 247442610}
+  startGame: {fileID: 489357720}
+  leave: {fileID: 812746587}
 --- !u!1 &848423782
 GameObject:
   m_ObjectHideFlags: 0

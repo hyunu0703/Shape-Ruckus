@@ -249,9 +249,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f9bf0791be0f41b43b8eee5049a16632, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RoomListItem
-  _title: {fileID: 153742941761022700}
-  _count: {fileID: 2549862041078328278}
-  _join: {fileID: 8065779482797984502}
+  title: {fileID: 153742941761022700}
+  count: {fileID: 2549862041078328278}
+  join: {fileID: 8065779482797984502}
 --- !u!1 &6153105598123392355
 GameObject:
   m_ObjectHideFlags: 0

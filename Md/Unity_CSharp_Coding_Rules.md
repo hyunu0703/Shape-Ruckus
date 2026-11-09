@@ -55,14 +55,19 @@ public interface IPlayerNameProvider
 | 클래스·구조체·열거형 | PascalCase | `PlayerMovement`, `ItemType` |
 | Interface | I + PascalCase | `IDamageable` |
 | 메서드·프로퍼티·이벤트 | PascalCase | `TakeDamage`, `CurrentHealth`, `HealthChanged` |
-| private 필드 | _camelCase | `_moveSpeed`, `_rigidbody` |
+| private 필드 | camelCase, 이름 앞 `_` 금지 | `moveSpeed`, `rigidbody` |
 | 매개변수·지역 변수 | camelCase | `damageAmount`, `targetPosition` |
 | 상수·static readonly 필드 | PascalCase | `MaxInventorySlots` |
-| bool 값 | 상태나 판단을 드러내는 이름 | `_isGrounded`, `canAttack`, `HasTarget` |
+| bool 값 | 상태나 판단을 드러내는 이름 | `isGrounded`, `canAttack`, `HasTarget` |
 | MonoBehaviour 파일 | 대표 클래스명과 일치 | `PlayerMovement.cs` |
 
 - **필수**: 멤버의 접근 제한자를 명시한다. 외부 공개 범위를 최소화한다.
+- **필수**: 필드, 매개변수, 지역 변수 이름 앞에 `_`를 붙이지 않는다. 필드와 매개변수 이름이 같으면 `this.fieldName`으로 구분한다. 버리는 값의 `_`와 외부 SDK가 정의한 `_32` 같은 타입 이름은 이 규칙의 대상이 아니다.
+- **필수**: 함수와 함수 사이는 빈 줄 2개로 구분한다. 함수의 역할 주석과 특성은 해당 함수에 붙이고, 앞 함수의 닫는 중괄호와 다음 함수의 주석 사이에 빈 줄 2개를 둔다.
+- **필수**: `if`, `else`, `switch`, `for`, `foreach`, `while`, `do` 블록과 인접한 다른 실행문 사이는 빈 줄 1개로 구분한다. 블록의 시작·끝 중괄호 바로 안쪽에는 불필요한 빈 줄을 넣지 않으며, `if`/`else if`/`else`와 `do`/`while`은 연결해서 작성한다.
 - **필수**: Inspector 설정값은 특별한 이유가 없으면 `[SerializeField] private`으로 선언한다.
+- **필수**: `[SerializeField] private 변수타입 변수명;`은 한 줄로 작성한다. 초기값도 같은 줄에 작성한다. `FormerlySerializedAs` 등 추가 특성은 바로 윗줄에 둘 수 있다.
+- **필수**: 클래스의 필드는 사용 목적과 기능별로 그룹화한다. 각 그룹 위에 `// 로비 방 목록 표시`처럼 용도를 설명하는 짧은 주석을 작성하고, 그룹 사이는 빈 줄 1개로 구분한다. 자료형이나 접근 제한자만으로 나누지 않으며, 관련 상수·프로퍼티·이벤트도 역할에 맞게 묶는다. 특성은 해당 선언에 붙이고 함수 사이의 빈 줄 2개 규칙은 유지한다.
 - **필수**: 외부에서 변경하면 안 되는 상태는 읽기 전용 프로퍼티나 의도가 드러나는 메서드로 제공한다.
 - **필수**: 함수는 하나의 목적을 수행한다. 조회 함수가 숨겨진 상태 변경을 하지 않게 한다.
 - **필수**: 빈 Unity 이벤트 함수, 사용하지 않는 변수·using, 도달하지 않는 코드, 주석 처리한 구버전 코드를 남기지 않는다.
@@ -75,10 +80,13 @@ public interface IPlayerNameProvider
 
 ```csharp
 // 좋은 예: 설정값과 외부 읽기 권한 구분
-[SerializeField] private float _moveSpeed = 5f;
-private int _currentHealth;
+// 이동 속도 설정
+[SerializeField] private float moveSpeed = 5f;
 
-public int CurrentHealth => _currentHealth;
+// 현재 체력 보관 및 조회
+private int currentHealth;
+
+public int CurrentHealth => currentHealth;
 
 // 나쁜 예: 외부에서 내부 상태를 임의로 변경 가능하며 의미도 불명확
 public float s = 5f;
@@ -89,6 +97,9 @@ public int hp;
 
 - **필수**: 클래스 선언 위에 `/// <summary>`로 책임과 주요 역할 작성.
 - **필수**: 직접 작성한 함수에는 `//`로 역할을 짧게 설명. 한 줄 설명으로 충분.
+- **필수**: 함수 위의 역할 주석과 별도로, 함수 내부의 주요 처리 단계 앞에 `//` 흐름 설명 작성. 실제 코드 순서에 따라 입력·참조 확인 → 실행 조건과 조기 종료 → 데이터 조회·변환 → 상태 변경·외부 요청 → 결과 전달·UI 갱신 → 실패 복구·정리 중 해당 단계를 설명.
+- **필수**: 중요한 분기의 진입·중단 이유, 데이터의 출처와 전달 대상, 비동기 요청 전후 상태, 권한 검사와 실패 복구 의도를 명시. 존재하지 않는 단계나 실제 코드가 보장하지 않는 동작을 주석에 추가하지 않음.
+- **권장**: 하나의 의미 있는 처리 묶음에 주석 1개 작성. 모든 줄에 주석을 반복하지 않고, 단계 사이 빈 줄 1개와 기존 함수 간격 유지. 외부 계약을 위한 빈 콜백은 함수 위의 미사용 사유로 설명.
 - **필수**: 모든 주석은 `입력 방향 저장`처럼 짧은 구 형태로 작성. `~한다`, `~된다`, `~입니다` 같은 서술형 표현 사용 금지.
 - **필수**: 주석에 마침표 사용 금지. `//`, `/// <summary>`, 데이터 흐름 설명, TODO에 동일하게 적용.
 - **필수**: 중요한 데이터 흐름에는 입력 출처, 변환 이유, 결과 전달 위치를 필요한 만큼 설명.
@@ -103,13 +114,25 @@ public int hp;
 /// </summary>
 public sealed class PlayerMovement : MonoBehaviour
 {
-    private Vector2 _moveInput;
+    private Vector2 moveInput;
 
     // 입력 방향 저장
     public void SetMoveInput(Vector2 input)
     {
         // 프레임 단위 입력 수신 후 FixedUpdate에서 저장값 사용
-        _moveInput = Vector2.ClampMagnitude(input, 1f);
+        moveInput = Vector2.ClampMagnitude(input, 1f);
+    }
+
+
+    // 입력 이동 방향 초기화
+    public void ClearMoveInput()
+    {
+        if (moveInput == Vector2.zero)
+        {
+            return;
+        }
+
+        moveInput = Vector2.zero;
     }
 }
 ```
@@ -141,15 +164,15 @@ count++;
 
 ```csharp
 // 좋은 예: 같은 키를 한 번만 조회
-if (_items.TryGetValue(itemId, out Item item))
+if (items.TryGetValue(itemId, out Item item))
 {
     item.Use();
 }
 
 // 나쁜 예: 같은 키를 두 번 조회
-if (_items.ContainsKey(itemId))
+if (items.ContainsKey(itemId))
 {
-    _items[itemId].Use();
+    items[itemId].Use();
 }
 ```
 
@@ -247,7 +270,11 @@ if (_items.ContainsKey(itemId))
 - [ ] 기존 시스템을 재사용하며 중복 구현이 없다.
 - [ ] 클래스와 함수의 책임이 명확하고 불필요한 추상화가 없다.
 - [ ] 명명, 접근 제한자, 직렬화 필드 규칙을 지킨다.
+- [ ] `[SerializeField] private 변수타입 변수명;` 선언이 한 줄로 작성되어 있다.
+- [ ] 필드가 용도별로 그룹화되어 있고, 각 그룹 위의 설명 주석과 그룹 사이 빈 줄 1개가 있다.
+- [ ] 변수 이름 앞에 `_`가 없고, 함수 사이 빈 줄 2개와 조건문·반복문 주변 빈 줄 1개 규칙을 지킨다.
 - [ ] 클래스 summary, 함수 주석, 중요한 데이터 흐름 설명이 최신이다.
+- [ ] 함수 내부의 주요 단계와 분기 이유, 데이터 전달 및 실패 복구 흐름이 `//` 주석으로 설명되어 있다.
 - [ ] 모든 주석이 서술형 표현과 마침표 없이 짧은 구 형태로 작성되어 있다.
 - [ ] 자료구조와 알고리즘이 데이터 크기와 호출 빈도에 적합하다.
 - [ ] 빈 Update, 반복 컴포넌트 검색, 불필요한 할당이 없다.
