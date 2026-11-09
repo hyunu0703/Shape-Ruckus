@@ -6,10 +6,10 @@ using Fusion;
 public sealed class PlayerRoomState : NetworkBehaviour
 {
     // 플레이어 식별 정보와 닉네임 동기화
-    [Networked]
+    [Networked, OnChangedRender(nameof(OnIdentityChanged))]
     public PlayerRef Player { get; private set; }
 
-    [Networked]
+    [Networked, OnChangedRender(nameof(OnIdentityChanged))]
     public NetworkString<_32> Nickname { get; private set; }
 
     // 플레이어 준비 상태 동기화
@@ -36,13 +36,27 @@ public sealed class PlayerRoomState : NetworkBehaviour
     {
         // 디스폰 이후에도 등록을 해제할 수 있도록 세션과 플레이어 식별자 보관
         this.session = SharedSession.Instance;
-        this.registeredPlayer = Player;
+        OnIdentityChanged();
+    }
 
-        // 현재 연결과 일치하는 경우 세션의 플레이어 사전에 등록 요청
-        if (this.session != null)
+
+    // 늦게 복제된 식별자와 닉네임을 플레이어 사전 및 화면에 반영
+    private void OnIdentityChanged()
+    {
+        // 디스폰 이후의 변경 통지 차단
+        if (this.session == null)
         {
-            this.session.RegisterPlayer(this);
+            return;
         }
+
+        // 이전 식별자의 등록을 정리한 뒤 최신 닉네임으로 화면 갱신 요청
+        if (this.registeredPlayer != Player)
+        {
+            this.session.UnregisterPlayer(this.registeredPlayer, this);
+        }
+
+        this.registeredPlayer = Player;
+        this.session.RegisterPlayer(this);
     }
 
 

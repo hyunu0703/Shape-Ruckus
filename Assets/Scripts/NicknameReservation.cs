@@ -1,5 +1,6 @@
 using System;
 using System.Threading.Tasks;
+using Fusion.Matchmaking;
 using Fusion.Photon.Realtime;
 using Photon.Realtime;
 
@@ -45,6 +46,9 @@ public sealed class NicknameReservation : IDisposable
         var settings = PhotonAppSettings.Global.AppSettings.GetCopy();
         settings.FixedRegion = "kr";
         settings.AppVersion = "shape-ruckus-nicknames-v1";
+
+        // Fusion 앱의 클라이언트와 전송 및 암호화 기본 설정 적용
+        this.client.SetupForFusion(settings);
         await this.client.ConnectUsingSettingsAsync(settings, this.config);
 
         // Create 전용 요청으로 동시 제출도 서버에서 한 명만 성공
@@ -53,6 +57,8 @@ public sealed class NicknameReservation : IDisposable
             RoomName = OnlineNameRules.GetKey("sr-nickname-", nickname),
             RoomOptions = new RoomOptions
             {
+                // Fusion 서버가 요구하는 SDK 버전별 플러그인 명시
+                Plugins = new[] { RealtimeClientExtensions.FusionPluginName },
                 MaxPlayers = 1,
                 IsOpen = false,
                 IsVisible = false,

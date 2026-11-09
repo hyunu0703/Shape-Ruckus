@@ -67,6 +67,7 @@ public sealed class LobbyUI : MonoBehaviour
     private bool isSubscribed;
     private TMP_Text onlineLabel;
     private TMP_Text refreshLabel;
+    private TMP_Text lobbyTitle;
 
 
     // 필수 UI 참조 검증
@@ -113,10 +114,12 @@ public sealed class LobbyUI : MonoBehaviour
         // 초기 비활성 Panel의 라벨도 포함하여 한 번만 검색
         this.onlineLabel = this.online.GetComponentInChildren<TMP_Text>(true);
         this.refreshLabel = this.refresh.GetComponentInChildren<TMP_Text>(true);
+        Transform titleTransform = this.lobbyPanel.transform.Find("LobbyTitle");
+        this.lobbyTitle = titleTransform != null ? titleTransform.GetComponent<TMP_Text>() : null;
 
-        if (this.onlineLabel == null || this.refreshLabel == null)
+        if (this.onlineLabel == null || this.refreshLabel == null || this.lobbyTitle == null)
         {
-            Debug.LogError("LobbyUI의 버튼 라벨 누락", this);
+            Debug.LogError("LobbyUI의 버튼 라벨 또는 로비 제목 누락", this);
             enabled = false;
             return;
         }
@@ -125,6 +128,7 @@ public sealed class LobbyUI : MonoBehaviour
         this.nickname.characterLimit = OnlineNameRules.MaxNicknameLength;
         this.roomName.characterLimit = OnlineNameRules.MaxRoomTitleLength;
         this.roomTitle.richText = false;
+        this.lobbyTitle.richText = false;
 
         foreach (TMP_Text slot in this.playerSlots)
         {
@@ -247,6 +251,7 @@ public sealed class LobbyUI : MonoBehaviour
 
         // 연결 메시지와 복구 버튼을 갱신하고 모달 뒤쪽 입력 차단
         this.status.text = this.session.Status;
+        this.lobbyTitle.text = this.session.Nickname;
         this.online.interactable = idle && !this.nicknamePopup.activeSelf;
         this.quit.interactable = idle && !this.nicknamePopup.activeSelf;
         this.onlineLabel.text = this.session.Runner == null &&
@@ -306,12 +311,22 @@ public sealed class LobbyUI : MonoBehaviour
                     break;
                 }
 
-                string label = $"Player {id.PlayerId}   데이터 수신 중...";
+                // 자신의 닉네임은 즉시 표시하고 원격 정보 수신 전에는 임시 번호 대신 안내 표시
+                string displayName = id == runner.LocalPlayer ? this.session.Nickname : "닉네임을 불러오는 중...";
+                string hostBadge = id == master ? "   [ 방장 ]" : "";
+                string label = displayName + hostBadge;
 
                 if (this.session.Players.TryGetValue(id, out PlayerRoomState player) && player != null &&
                     player.Object != null && player.Object.IsValid)
                 {
-                    label = $"{player.Nickname}   {(id == master ? "[방장]   " : "")}{(player.IsReady ? "준비 완료" : "미준비")}";
+                    string syncedNickname = player.Nickname.ToString();
+
+                    if (!string.IsNullOrWhiteSpace(syncedNickname))
+                    {
+                        displayName = syncedNickname;
+                    }
+
+                    label = $"{displayName}{hostBadge}   {(player.IsReady ? "준비 완료" : "미준비")}";
 
                     // 자신의 슬롯에만 준비 버튼 상태와 소유 권한 반영
                     if (id == runner.LocalPlayer)
