@@ -1,0 +1,18 @@
+Online name filter word-list attribution
+
+Source: List of Dirty, Naughty, Obscene, and Otherwise Bad Words
+Creators: Shutterstock, Inc. and LDNOOBW contributors
+https://github.com/LDNOOBW/List-of-Dirty-Naughty-Obscene-and-Otherwise-Bad-Words
+English: https://github.com/LDNOOBW/List-of-Dirty-Naughty-Obscene-and-Otherwise-Bad-Words/blob/master/en
+Korean: https://github.com/LDNOOBW/List-of-Dirty-Naughty-Obscene-and-Otherwise-Bad-Words/blob/master/ko
+Reviewed: 2026-11-09
+License: Creative Commons Attribution 4.0 International (CC BY 4.0)
+https://creativecommons.org/licenses/by/4.0/
+Original license: https://github.com/LDNOOBW/List-of-Dirty-Naughty-Obscene-and-Otherwise-Bad-Words/blob/master/LICENSE
+
+Modifications: selected profanity and explicit sexual terms; omitted general words,
+identity terms and ambiguous entries; added Korean spelling variants, abbreviations
+and explicit sexual expressions; divided substring and word-boundary matches to
+reduce false positives; normalized letter case, Hangul jamo and separators.
+The adapted word lists in OnlineNameFilter.cs are licensed under CC BY 4.0.
+The source material is supplied without warranties; see the linked license.

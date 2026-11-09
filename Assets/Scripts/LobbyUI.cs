@@ -157,6 +157,7 @@ public sealed class LobbyUI : MonoBehaviour
         this.confirmNickname.onClick.AddListener(OnConfirmNickname);
         this.cancelNickname.onClick.AddListener(CloseNickname);
         this.nickname.onSubmit.AddListener(OnSubmitNickname);
+        this.nickname.onValidateInput += ValidateNicknameCharacter;
         this.back.onClick.AddListener(OnBack);
         this.refresh.onClick.AddListener(OnRefresh);
         this.openCreate.onClick.AddListener(OpenCreate);
@@ -199,6 +200,7 @@ public sealed class LobbyUI : MonoBehaviour
         this.confirmNickname.onClick.RemoveListener(OnConfirmNickname);
         this.cancelNickname.onClick.RemoveListener(CloseNickname);
         this.nickname.onSubmit.RemoveListener(OnSubmitNickname);
+        this.nickname.onValidateInput -= ValidateNicknameCharacter;
         this.back.onClick.RemoveListener(OnBack);
         this.refresh.onClick.RemoveListener(OnRefresh);
         this.openCreate.onClick.RemoveListener(OpenCreate);
@@ -431,6 +433,14 @@ public sealed class LobbyUI : MonoBehaviour
         Render();
         this.nickname.Select();
         this.nickname.ActivateInputField();
+    }
+
+
+    // 조합 중 한글 자모는 유지하고 금지된 닉네임 문자 입력 차단
+    private char ValidateNicknameCharacter(string text, int index, char character)
+    {
+        // 붙여넣기와 키보드 입력에 동일한 문자 허용 규칙 적용
+        return OnlineNameRules.IsNicknameCharacter(character) ? character : '\0';
     }
 
 
