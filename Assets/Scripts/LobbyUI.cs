@@ -22,6 +22,13 @@ public sealed class LobbyUI : MonoBehaviour
     [SerializeField] private Button online;
     [SerializeField] private Button quit;
 
+    // 최초 온라인 진입의 닉네임 입력과 중복 오류 표시
+    [SerializeField] private GameObject nicknamePopup;
+    [SerializeField] private TMP_InputField nickname;
+    [SerializeField] private TMP_Text nicknameError;
+    [SerializeField] private Button confirmNickname;
+    [SerializeField] private Button cancelNickname;
+
     // 로비 화면과 탐색 입력
     [SerializeField] private GameObject lobbyPanel;
     [SerializeField] private CanvasGroup lobbyControls;
@@ -72,7 +79,8 @@ public sealed class LobbyUI : MonoBehaviour
             this.lobbyPanel, this.lobbyControls, this.back, this.refresh, this.openCreate,
             this.emptyList, this.listContent, this.roomItemPrefab, this.createPopup,
             this.roomName, this.createError, this.create, this.cancelCreate, this.roomPanel,
-            this.roomTitle, this.playerCount, this.readyLabel, this.ready, this.startGame, this.leave
+            this.roomTitle, this.playerCount, this.readyLabel, this.ready, this.startGame, this.leave,
+            this.nicknamePopup, this.nickname, this.nicknameError, this.confirmNickname, this.cancelNickname
         };
 
         foreach (UnityEngine.Object reference in required)
@@ -113,6 +121,16 @@ public sealed class LobbyUI : MonoBehaviour
             return;
         }
 
+        // Inspector 설정과 관계없이 실제 입력 단계에도 최대 길이 적용
+        this.nickname.characterLimit = OnlineNameRules.MaxNicknameLength;
+        this.roomName.characterLimit = OnlineNameRules.MaxRoomTitleLength;
+        this.roomTitle.richText = false;
+
+        foreach (TMP_Text slot in this.playerSlots)
+        {
+            slot.richText = false;
+        }
+
         this.isConfigured = true;
     }
 
@@ -132,6 +150,9 @@ public sealed class LobbyUI : MonoBehaviour
         this.session.SessionListChanged += RenderSessions;
         this.online.onClick.AddListener(OnOnline);
         this.quit.onClick.AddListener(OnQuit);
+        this.confirmNickname.onClick.AddListener(OnConfirmNickname);
+        this.cancelNickname.onClick.AddListener(CloseNickname);
+        this.nickname.onSubmit.AddListener(OnSubmitNickname);
         this.back.onClick.AddListener(OnBack);
         this.refresh.onClick.AddListener(OnRefresh);
         this.openCreate.onClick.AddListener(OpenCreate);
@@ -171,6 +192,9 @@ public sealed class LobbyUI : MonoBehaviour
         // 재활성화 시 클릭이 중복 처리되지 않도록 나머지 버튼 구독 해제
         this.online.onClick.RemoveListener(OnOnline);
         this.quit.onClick.RemoveListener(OnQuit);
+        this.confirmNickname.onClick.RemoveListener(OnConfirmNickname);
+        this.cancelNickname.onClick.RemoveListener(CloseNickname);
+        this.nickname.onSubmit.RemoveListener(OnSubmitNickname);
         this.back.onClick.RemoveListener(OnBack);
         this.refresh.onClick.RemoveListener(OnRefresh);
         this.openCreate.onClick.RemoveListener(OpenCreate);
@@ -210,10 +234,21 @@ public sealed class LobbyUI : MonoBehaviour
             this.createPopup.SetActive(false);
         }
 
+        // 등록 완료와 시작 화면 이탈 시 닉네임 모달 닫기
+        if (screen != SharedSession.Screen.Start || this.session.HasNickname)
+        {
+            this.nicknamePopup.SetActive(false);
+        }
+
+        this.nickname.interactable = idle && string.IsNullOrEmpty(this.session.Nickname);
+        this.confirmNickname.interactable = idle;
+        this.cancelNickname.interactable = idle;
+        this.nicknameError.text = this.session.NicknameError;
+
         // 연결 메시지와 복구 버튼을 갱신하고 모달 뒤쪽 입력 차단
         this.status.text = this.session.Status;
-        this.online.interactable = idle;
-        this.quit.interactable = idle;
+        this.online.interactable = idle && !this.nicknamePopup.activeSelf;
+        this.quit.interactable = idle && !this.nicknamePopup.activeSelf;
         this.onlineLabel.text = this.session.Runner == null &&
             this.session.Status.Contains("종료") ? "다시 연결" : "온라인 플레이";
         this.lobbyControls.interactable = idle && !this.createPopup.activeSelf;
@@ -369,8 +404,51 @@ public sealed class LobbyUI : MonoBehaviour
     // 온라인 버튼의 비동기 입력 전달
     private async void OnOnline()
     {
-        // 온라인 버튼 요청을 연결 작업으로 전달하고 UI 경계에서 예외 처리
-        await RunAsync(this.session.ConnectAsync());
+        // 확정 닉네임이 있으면 재사용하고 최초 온라인 진입 시 입력 모달 표시
+        if (this.session.HasNickname)
+        {
+            await RunAsync(this.session.ConnectAsync());
+            return;
+        }
+
+        this.nicknamePopup.SetActive(true);
+        this.nickname.text = this.session.Nickname;
+        Render();
+        this.nickname.Select();
+        this.nickname.ActivateInputField();
+    }
+
+
+    // 닉네임 선점과 로비 연결 요청 전달
+    private async void OnConfirmNickname()
+    {
+        // 중복 버튼과 Enter 요청은 세션의 작업 잠금에서 차단
+        await RunAsync(this.session.RegisterNicknameAsync(this.nickname.text));
+    }
+
+
+    // 키보드 제출을 확인 버튼과 동일한 등록 흐름에 연결
+    private void OnSubmitNickname(string input)
+    {
+        // 모달이 열려 있고 입력 가능한 동안에만 Enter 제출 허용
+        if (this.nicknamePopup.activeSelf && !this.session.IsBusy)
+        {
+            OnConfirmNickname();
+        }
+    }
+
+
+    // 등록 요청 전 닉네임 입력 취소
+    private void CloseNickname()
+    {
+        // 선점 진행 중 모달 취소로 인한 숨은 등록 방지
+        if (this.session.IsBusy)
+        {
+            return;
+        }
+
+        this.nicknamePopup.SetActive(false);
+        Render();
     }
 
 

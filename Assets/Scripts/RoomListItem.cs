@@ -63,6 +63,7 @@ public sealed class RoomListItem : MonoBehaviour
         this.joinRequested = joinRequested;
 
         // 최신 목록 데이터로 이름과 인원을 표시하고 참가 조건 반영
+        this.title.richText = false;
         this.title.text = SharedSession.GetTitle(session);
         this.count.text = $"{session.PlayerCount} / {SharedSession.MaxPlayers}";
         this.join.interactable = SharedSession.IsJoinable(session);

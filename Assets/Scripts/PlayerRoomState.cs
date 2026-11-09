@@ -26,7 +26,7 @@ public sealed class PlayerRoomState : NetworkBehaviour
     {
         // 로컬 입장 콜백에서 받은 식별자로 닉네임과 최초 미준비 데이터 구성
         Player = player;
-        Nickname = $"Player {player.PlayerId}";
+        Nickname = SharedSession.Instance.Nickname;
         IsReady = false;
     }
 

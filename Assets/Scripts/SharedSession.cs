@@ -14,7 +14,7 @@ public sealed class SharedSession : MonoBehaviour, INetworkRunnerCallbacks
 {
     // 방 정원과 목록 필터 및 새로고침 제한
     public const int MaxPlayers = 10;
-    public const string RoomKind = "shape-5v5-v1";
+    public const string RoomKind = "shape-5v5-v2";
     public const float RefreshInterval = 5f;
 
     // 화면 전환 단계
@@ -35,11 +35,19 @@ public sealed class SharedSession : MonoBehaviour, INetworkRunnerCallbacks
     // 플레이어 식별 검색과 로비 목록 분류
     private readonly Dictionary<PlayerRef, PlayerRoomState> players = new Dictionary<PlayerRef, PlayerRoomState>(MaxPlayers);
     private readonly List<SessionInfo> sessions = new List<SessionInfo>();
+    private readonly HashSet<string> occupiedRoomNames = new HashSet<string>(StringComparer.Ordinal);
     private readonly List<SessionInfo>[] groups = new List<SessionInfo>[MaxPlayers + 1];
 
     // 현재 네트워크 연결과 방 전체 상태 참조
     private NetworkRunner runner;
     private RoomGameState roomState;
+
+    // 방 이동과 뒤로 가기에도 유지하는 앱 단위 닉네임 점유
+    private NicknameReservation nicknameReservation;
+    private bool isRoomAccepted;
+    public string Nickname { get; private set; } = "";
+    public string NicknameError { get; private set; } = "";
+    public bool HasNickname => this.nicknameReservation != null && this.nicknameReservation.IsHeld;
 
     // 비동기 작업과 연결 수명 및 목록 수신 상태
     private bool isBusy;
@@ -105,6 +113,8 @@ public sealed class SharedSession : MonoBehaviour, INetworkRunnerCallbacks
     {
         // 늦게 완료되는 비동기 작업의 UI 접근 차단과 Runner 콜백 해제
         this.isDestroyed = true;
+        this.nicknameReservation?.Dispose();
+        this.nicknameReservation = null;
 
         if (this.runner != null)
         {
@@ -130,6 +140,14 @@ public sealed class SharedSession : MonoBehaviour, INetworkRunnerCallbacks
     // 온라인 버튼 입력에 따른 최초 로비 연결
     public async Task ConnectAsync()
     {
+        // 닉네임 등록 전 기존 진입점의 로비 우회 차단
+        if (!HasNickname)
+        {
+            NicknameError = "닉네임을 먼저 등록해 주세요.";
+            NotifyChanged();
+            return;
+        }
+
         // 시작 화면에서만 연결 잠금을 획득하고 중복 클릭 차단
         if (!BeginOperation(Screen.Start))
         {
@@ -144,6 +162,112 @@ public sealed class SharedSession : MonoBehaviour, INetworkRunnerCallbacks
         catch (Exception exception)
         {
             await HandleConnectionErrorAsync(exception);
+        }
+        finally
+        {
+            EndOperation();
+        }
+    }
+
+
+    // 입력한 닉네임의 서버 선점 후 최초 로비 연결
+    public async Task RegisterNicknameAsync(string input)
+    {
+        // 앱에서 이미 선택한 이름은 재접속 시에도 동일하게 유지
+        if (HasNickname)
+        {
+            await ConnectAsync();
+            return;
+        }
+
+        if (!OnlineNameRules.TryValidate(string.IsNullOrEmpty(Nickname) ? input : Nickname,
+            true, out string nickname, out string error))
+        {
+            NicknameError = error;
+            NotifyChanged();
+            return;
+        }
+
+        if (!BeginOperation(Screen.Start))
+        {
+            return;
+        }
+
+        NicknameReservation reservation = null;
+        try
+        {
+            // 기존 점유 연결 정리 후 서버 생성 결과로 중복 여부 결정
+            NicknameError = "";
+            Status = "닉네임을 확인하는 중...";
+            NotifyChanged();
+            this.nicknameReservation?.Dispose();
+            reservation = new NicknameReservation();
+            this.nicknameReservation = reservation;
+
+            if (!await reservation.AcquireAsync(nickname))
+            {
+                NicknameError = "이미 사용 중인 닉네임입니다.";
+                Status = NicknameError;
+                reservation.Dispose();
+                this.nicknameReservation = null;
+                return;
+            }
+
+            if (this.isDestroyed || this.nicknameReservation != reservation)
+            {
+                reservation.Dispose();
+                return;
+            }
+
+            // 확정 닉네임을 방 이동과 Scene 전환에 유지
+            Nickname = nickname;
+            reservation.Lost += OnNicknameLost;
+            await JoinLobbyAsync();
+        }
+        catch (Exception exception)
+        {
+            Debug.LogException(exception, this);
+
+            if (reservation == null || !reservation.IsHeld)
+            {
+                reservation?.Dispose();
+                this.nicknameReservation = null;
+                NicknameError = "닉네임을 확인할 수 없습니다. 다시 시도해 주세요.";
+            }
+
+            await StopRunnerAsync();
+            Status = "서버 연결에 실패했습니다. 다시 시도해 주세요.";
+        }
+        finally
+        {
+            EndOperation();
+        }
+    }
+
+
+    // 닉네임 점유 상실 시 게임 연결을 종료하여 중복 이름 플레이 차단
+    private async void OnNicknameLost()
+    {
+        // 종료 중이거나 이미 정리된 점유 연결의 통지 무시
+        if (this.isDestroyed || this.nicknameReservation == null)
+        {
+            return;
+        }
+
+        this.nicknameReservation.Dispose();
+        this.nicknameReservation = null;
+        this.isBusy = true;
+        NotifyChanged();
+        try
+        {
+            await StopRunnerAsync();
+            CurrentScreen = Screen.Start;
+            NicknameError = "닉네임 연결이 끊겼습니다. 다시 연결해 주세요.";
+            Status = NicknameError;
+        }
+        catch (Exception exception)
+        {
+            Debug.LogException(exception, this);
         }
         finally
         {
@@ -196,8 +320,18 @@ public sealed class SharedSession : MonoBehaviour, INetworkRunnerCallbacks
             return;
         }
 
-        // 중복 표시 이름을 허용하도록 고유 내부 이름으로 생성 요청
-        await EnterRoomAsync("sr-" + Guid.NewGuid().ToString("N"), title, true);
+        // 수신한 방은 정원과 참가 가능 여부에 관계없이 중복 안내
+        string sessionName = OnlineNameRules.GetKey("sr-room-v2-", title);
+
+        if (this.occupiedRoomNames.Contains(sessionName))
+        {
+            RoomError = "이미 사용 중인 방 이름입니다.";
+            NotifyChanged();
+            return;
+        }
+
+        // 목록에 없는 숨겨진 방과 동시 요청도 동일 Photon 세션으로 매핑
+        await EnterRoomAsync(sessionName, title, true);
     }
 
 
@@ -297,6 +431,11 @@ public sealed class SharedSession : MonoBehaviour, INetworkRunnerCallbacks
         try
         {
             await StopRunnerAsync();
+            if (this.nicknameReservation != null)
+            {
+                await this.nicknameReservation.ReleaseAsync();
+                this.nicknameReservation = null;
+            }
         }
         catch (Exception exception)
         {
@@ -441,28 +580,8 @@ public sealed class SharedSession : MonoBehaviour, INetworkRunnerCallbacks
     // 표시용 방 이름의 공백과 길이 및 제어문자 검증
     public static bool TryValidateTitle(string input, out string title, out string error)
     {
-        // 빈 입력을 정규화하고 앞뒤 공백을 제거한 표시 이름 준비
-        title = (input ?? "").Trim();
-        error = "";
-
-        // Trim으로 삭제되는 개행도 원본 입력 단계에서 거절
-        foreach (char character in input ?? "")
-        {
-            if (char.IsControl(character) || character == '\u2028' || character == '\u2029')
-            {
-                error = "개행과 제어문자는 사용할 수 없습니다.";
-                return false;
-            }
-        }
-
-        // 정규화된 이름 길이가 허용 범위 밖이면 사용자 안내와 함께 거절
-        if (title.Length < 2 || title.Length > 20)
-        {
-            error = "방 이름은 앞뒤 공백을 제외하고 2~20글자로 입력해 주세요.";
-            return false;
-        }
-
-        return true;
+        // UI와 직접 호출의 최대 24글자 조건 통합
+        return OnlineNameRules.TryValidate(input, false, out title, out error);
     }
 
 
@@ -523,7 +642,7 @@ public sealed class SharedSession : MonoBehaviour, INetworkRunnerCallbacks
     private async Task JoinLobbyAsync()
     {
         // 이미 파괴된 관리 객체의 후속 연결 생성 차단
-        if (this.isDestroyed)
+        if (this.isDestroyed || !HasNickname)
         {
             return;
         }
@@ -591,10 +710,12 @@ public sealed class SharedSession : MonoBehaviour, INetworkRunnerCallbacks
         this.isJoiningLobby = false;
         Status = create ? "방을 만드는 중..." : "방에 참가하는 중...";
         NotifyChanged();
+        string creationId = create ? Guid.NewGuid().ToString("N") : null;
+        bool duplicateTitle = false;
         try
         {
             // 종료된 Runner로의 요청을 막고 초기 네트워크 Scene 등록 검사
-            if (this.runner == null || this.runner.IsShutdown)
+            if (!HasNickname || this.runner == null || this.runner.IsShutdown)
             {
                 throw new InvalidOperationException("로비 Runner 종료 상태");
             }
@@ -622,7 +743,7 @@ public sealed class SharedSession : MonoBehaviour, INetworkRunnerCallbacks
             // 생성 요청에만 공개 속성과 표시 이름을 설정하고 참가 요청의 임의 생성 차단
             if (create)
             {
-                args.IsOpen = true;
+                args.IsOpen = false;
                 args.IsVisible = true;
                 args.SessionProperties = new Dictionary<string, SessionProperty>
                 {
@@ -633,6 +754,10 @@ public sealed class SharedSession : MonoBehaviour, INetworkRunnerCallbacks
                     {
                         "kind",
                         RoomKind
+                    },
+                    {
+                        "creationId",
+                        creationId
                     }
                 };
             }
@@ -649,7 +774,31 @@ public sealed class SharedSession : MonoBehaviour, INetworkRunnerCallbacks
 
             if (!result.Ok || joining == null || joining != this.runner || joining.SessionInfo.Name != sessionName)
             {
+                duplicateTitle = create && (result.ShutdownReason == ShutdownReason.GameClosed ||
+                    result.ShutdownReason == ShutdownReason.GameIsFull);
                 throw new InvalidOperationException($"Photon 방 요청 실패: {result.ShutdownReason}");
+            }
+
+            // Shared의 JoinOrCreate 결과가 기존 방인 경우 생성 성공으로 처리하지 않고 즉시 퇴장
+            if (create && (!joining.SessionInfo.Properties.TryGetValue("creationId", out SessionProperty actualId) ||
+                !actualId.IsString || (string)actualId != creationId))
+            {
+                duplicateTitle = true;
+                throw new InvalidOperationException("이미 사용 중인 방 이름");
+            }
+
+            if (!HasNickname)
+            {
+                throw new InvalidOperationException("닉네임 점유 연결 종료");
+            }
+
+            // 생성자 확인 이전에는 플레이어를 스폰하지 않고 성공한 신규 방만 개방
+            this.isRoomAccepted = true;
+            SpawnLocalPlayer(joining);
+
+            if (create)
+            {
+                joining.SessionInfo.IsOpen = true;
             }
 
             // 성공한 방의 대기실로 전환하고 로비 스냅샷 정리
@@ -666,15 +815,20 @@ public sealed class SharedSession : MonoBehaviour, INetworkRunnerCallbacks
         }
         catch (Exception exception)
         {
-            Debug.LogException(exception, this);
-
             if (this.isDestroyed)
             {
                 return;
             }
 
+            // 사용자 입력 중복은 일반 오류로 안내하고 예기치 않은 실패만 예외 기록
+            if (!duplicateTitle)
+            {
+                Debug.LogException(exception, this);
+            }
+
             // 실패한 방 연결을 폐기하고 오류와 입력값을 유지한 채 새 로비 연결 시도
-            RoomError = create ? "방을 만들 수 없습니다. 다시 시도해 주세요." : "방에 참가할 수 없습니다.";
+            RoomError = duplicateTitle ? "이미 사용 중인 방 이름입니다." :
+                (create ? "방을 만들 수 없습니다. 이미 사용 중인 이름인지 확인해 주세요." : "방에 참가할 수 없습니다.");
             await StopRunnerAsync();
             CurrentScreen = Screen.Lobby;
             try
@@ -759,6 +913,7 @@ public sealed class SharedSession : MonoBehaviour, INetworkRunnerCallbacks
     {
         // 이전 참가자와 방 권한 참조 및 Scene 로딩 상태를 함께 초기화
         this.players.Clear();
+        this.isRoomAccepted = false;
         this.roomState = null;
         IsSceneLoading = false;
     }
@@ -769,6 +924,7 @@ public sealed class SharedSession : MonoBehaviour, INetworkRunnerCallbacks
     {
         // 이전 목록 스냅샷을 비우고 재사용 UI 항목 숨김 요청
         this.sessions.Clear();
+        this.occupiedRoomNames.Clear();
         this.hasSessionList = false;
 
         // 비표시 분류 버퍼에서도 이전 SessionInfo 참조 해제
@@ -800,8 +956,14 @@ public sealed class SharedSession : MonoBehaviour, INetworkRunnerCallbacks
         }
 
         // 참가 가능 방만 인원수에 대응하는 그룹에 수신 순서대로 추가
+        this.occupiedRoomNames.Clear();
         foreach (SessionInfo session in sessionList)
         {
+            if (session != null)
+            {
+                this.occupiedRoomNames.Add(session.Name);
+            }
+
             if (IsJoinable(session))
             {
                 this.groups[session.PlayerCount].Add(session);
@@ -834,17 +996,32 @@ public sealed class SharedSession : MonoBehaviour, INetworkRunnerCallbacks
         }
 
         // 자신의 입장에서만 초기 데이터를 넣어 객체 하나를 스폰하고 PlayerRef와 연결
-        if (player == runner.LocalPlayer && !runner.TryGetPlayerObject(player, out _))
+        if (player == runner.LocalPlayer && this.isRoomAccepted)
         {
-            PlayerRoomState state = runner.Spawn(this.playerPrefab, onBeforeSpawned: (source, networkObject) =>
-            {
-                networkObject.GetComponent<PlayerRoomState>().Initialize(player);
-            });
-            runner.SetPlayerObject(player, state.Object);
+            SpawnLocalPlayer(runner);
         }
 
         // 입장 결과에 맞춰 참가자 수와 시작 조건 재평가 요청
         NotifyChanged();
+    }
+
+
+    // 닉네임 점유와 방 생성 결과를 확인한 로컬 플레이어만 스폰
+    private void SpawnLocalPlayer(NetworkRunner runner)
+    {
+        // 이전 연결과 중복 스폰 및 닉네임 없는 진입 차단
+        if (runner != this.runner || !HasNickname || !this.isRoomAccepted ||
+            runner.TryGetPlayerObject(runner.LocalPlayer, out _))
+        {
+            return;
+        }
+
+        PlayerRef player = runner.LocalPlayer;
+        PlayerRoomState state = runner.Spawn(this.playerPrefab, onBeforeSpawned: (source, networkObject) =>
+        {
+            networkObject.GetComponent<PlayerRoomState>().Initialize(player);
+        });
+        runner.SetPlayerObject(player, state.Object);
     }
 
 
