@@ -55,6 +55,10 @@ public sealed class LobbyUI : MonoBehaviour
     [SerializeField] private TMP_Text roomTitle;
     [SerializeField] private TMP_Text playerCount;
     [SerializeField] private TMP_Text[] playerSlots;
+    private Image[] playerSlotBackgrounds;
+    private Color[] playerSlotDefaultColors;
+    private static readonly Color ReadySlotColor = new Color32(32, 59, 92, 255);
+    private static readonly Color NotReadySlotColor = new Color32(92, 44, 50, 255);
 
     // 준비 상태와 게임 시작 및 퇴장 입력
     [SerializeField] private TMP_Text readyLabel;
@@ -109,6 +113,24 @@ public sealed class LobbyUI : MonoBehaviour
                 enabled = false;
                 return;
             }
+        }
+
+        // 기존 슬롯의 부모 패널과 색상을 한 번만 보관하여 방장과 빈 슬롯에 재사용
+        this.playerSlotBackgrounds = new Image[this.playerSlots.Length];
+        this.playerSlotDefaultColors = new Color[this.playerSlots.Length];
+        for (int i = 0; i < this.playerSlots.Length; i++)
+        {
+            Transform panel = this.playerSlots[i].transform.parent;
+            Image background = panel != null ? panel.GetComponent<Image>() : null;
+            if (background == null)
+            {
+                Debug.LogError("LobbyUI의 플레이어 슬롯 배경 이미지 누락", this);
+                enabled = false;
+                return;
+            }
+
+            this.playerSlotBackgrounds[i] = background;
+            this.playerSlotDefaultColors[i] = background.color;
         }
 
         // 초기 비활성 Panel의 라벨도 포함하여 한 번만 검색
@@ -293,6 +315,7 @@ public sealed class LobbyUI : MonoBehaviour
         for (int i = 0; i < this.playerSlots.Length; i++)
         {
             this.playerSlots[i].text = $"{i + 1:00}   참가 대기 중";
+            this.playerSlotBackgrounds[i].color = this.playerSlotDefaultColors[i];
         }
 
         NetworkRunner runner = this.session.Runner;
@@ -328,8 +351,13 @@ public sealed class LobbyUI : MonoBehaviour
                         displayName = syncedNickname;
                     }
 
-                    label = id == master ? $"{displayName}{hostBadge}" :
-                        $"{displayName}   {(player.IsReady ? "준비" : "미준비")}";
+                    label = displayName + hostBadge;
+
+                    // 방장과 미수신 데이터는 원래 색상 유지, 유효한 참가자 준비 상태만 색상으로 표시
+                    if (id != master)
+                    {
+                        this.playerSlotBackgrounds[count].color = player.IsReady ? ReadySlotColor : NotReadySlotColor;
+                    }
 
                     // 자신의 슬롯에만 준비 버튼 상태와 소유 권한 반영
                     if (id == runner.LocalPlayer)
