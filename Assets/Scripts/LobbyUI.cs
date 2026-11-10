@@ -127,6 +127,8 @@ public sealed class LobbyUI : MonoBehaviour
         // Inspector 설정과 관계없이 실제 입력 단계에도 최대 길이 적용
         this.nickname.characterLimit = OnlineNameRules.MaxNicknameLength;
         this.roomName.characterLimit = OnlineNameRules.MaxRoomTitleLength;
+        WebGLNameInput.Attach(this.nickname);
+        WebGLNameInput.Attach(this.roomName);
         this.roomTitle.richText = false;
         this.lobbyTitle.richText = false;
 
