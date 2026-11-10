@@ -300,10 +300,8 @@ public sealed class LobbyUI : MonoBehaviour
         this.readyLabel.text = "준비";
         int count = 0;
 
-        // 방 전체 상태 객체의 State Authority에서 현재 방장 식별
-        PlayerRef master = this.session.RoomState != null &&
-            this.session.RoomState.Object != null &&
-            this.session.RoomState.Object.IsValid ? this.session.RoomState.Object.StateAuthority : PlayerRef.None;
+        // 준비 상태와 같은 Shared Mode의 현재 방장 식별자를 표시에도 사용
+        PlayerRef master = runner != null && runner.IsRunning ? runner.GetMasterClient() : PlayerRef.None;
 
         // 실제 활성 참가자만 순회하며 수신된 플레이어 데이터와 결합
         if (runner != null && runner.IsRunning)
@@ -317,7 +315,7 @@ public sealed class LobbyUI : MonoBehaviour
 
                 // 자신의 닉네임은 즉시 표시하고 원격 정보 수신 전에는 임시 번호 대신 안내 표시
                 string displayName = id == runner.LocalPlayer ? this.session.Nickname : "닉네임을 불러오는 중...";
-                string hostBadge = id == master ? "   [ 방장 ]" : "";
+                string hostBadge = id == master ? "   [방장]" : "";
                 string label = displayName + hostBadge;
 
                 if (this.session.Players.TryGetValue(id, out PlayerRoomState player) && player != null &&
@@ -330,14 +328,14 @@ public sealed class LobbyUI : MonoBehaviour
                         displayName = syncedNickname;
                     }
 
-                    label = $"{displayName}{hostBadge}   {(player.IsReady ? "준비 완료" : "미준비")}";
+                    label = id == master ? $"{displayName}{hostBadge}" :
+                        $"{displayName}   {(player.IsReady ? "준비" : "미준비")}";
 
                     // 자신의 슬롯에만 준비 버튼 상태와 소유 권한 반영
                     if (id == runner.LocalPlayer)
                     {
-                        label += "   (나)";
-                        this.readyLabel.text = player.IsReady ? "준비 취소" : "준비";
-                        this.ready.interactable = !this.session.IsBusy &&
+                        this.readyLabel.text = id == master ? "준비" : (player.IsReady ? "준비 취소" : "준비");
+                        this.ready.interactable = id != master && !this.session.IsBusy &&
                             !this.session.IsSceneLoading &&
                             this.session.CurrentScreen == SharedSession.Screen.Room &&
                             player.Object.HasStateAuthority;

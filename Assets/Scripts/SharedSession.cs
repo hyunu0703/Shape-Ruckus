@@ -500,7 +500,7 @@ public sealed class SharedSession : MonoBehaviour, INetworkRunnerCallbacks
                 !player.Object.IsValid ||
                 player.Player != id ||
                 player.Object.StateAuthority != id ||
-                !player.IsReady)
+                (id != this.runner.GetMasterClient() && !player.IsReady))
             {
                 return false;
             }
@@ -554,6 +554,13 @@ public sealed class SharedSession : MonoBehaviour, INetworkRunnerCallbacks
     // 네트워크 시작 상태 수신에 따른 입력 잠금
     public void NotifyRoomChanged()
     {
+        // 새 방장은 자신의 State Authority로 기존 네트워크 준비 값을 갱신
+        if (this.runner != null && this.runner.IsRunning &&
+            this.players.TryGetValue(this.runner.LocalPlayer, out PlayerRoomState player) && player != null)
+        {
+            player.EnsureHostReady();
+        }
+
         // 늦은 시작 상태 통지가 완료된 게임 화면을 로딩 화면으로 되돌리는 경우 차단
         if (CurrentScreen != Screen.Game && this.roomState != null && this.roomState.Object != null &&
             this.roomState.Object.IsValid && this.roomState.IsStarting)

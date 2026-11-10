@@ -24,10 +24,10 @@ public sealed class PlayerRoomState : NetworkBehaviour
     // 로컬 스폰 이전의 초기 네트워크 데이터 설정
     public void Initialize(PlayerRef player)
     {
-        // 로컬 입장 콜백에서 받은 식별자로 닉네임과 최초 미준비 데이터 구성
+        // 로컬 입장 콜백에서 받은 식별자로 닉네임과 방장 자동 준비 데이터 구성
         Player = player;
         Nickname = SharedSession.Instance.Nickname;
-        IsReady = false;
+        IsReady = Runner.IsSharedModeMasterClient;
     }
 
 
@@ -36,6 +36,7 @@ public sealed class PlayerRoomState : NetworkBehaviour
     {
         // 디스폰 이후에도 등록을 해제할 수 있도록 세션과 플레이어 식별자 보관
         this.session = SharedSession.Instance;
+        EnsureHostReady();
         OnIdentityChanged();
     }
 
@@ -74,7 +75,22 @@ public sealed class PlayerRoomState : NetworkBehaviour
     }
 
 
-    // 자신의 유효한 State Authority 데이터만 변경
+    // 최초 등록과 방장 변경 시 자신의 준비 상태를 네트워크에 반영
+    public void EnsureHostReady()
+    {
+        if (Object == null || !Object.IsValid || !Object.HasStateAuthority ||
+            Runner == null || !Runner.IsRunning || Player != Runner.LocalPlayer ||
+            !Runner.IsSharedModeMasterClient || IsReady)
+        {
+            return;
+        }
+
+        IsReady = true;
+        OnReadyChanged();
+    }
+
+
+    // 방장을 제외한 자신의 유효한 State Authority 데이터만 변경
     public void ToggleReady()
     {
         // 방 대기실 상태와 작업 잠금 및 자신의 State Authority를 모두 검사
@@ -85,7 +101,8 @@ public sealed class PlayerRoomState : NetworkBehaviour
             Object == null ||
             !Object.IsValid ||
             !Object.HasStateAuthority ||
-            Player != Runner.LocalPlayer)
+            Player != Runner.LocalPlayer ||
+            Runner.IsSharedModeMasterClient)
         {
             return;
         }
