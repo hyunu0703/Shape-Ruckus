@@ -45,6 +45,7 @@ public sealed class SharedSession : MonoBehaviour, INetworkRunnerCallbacks
     // 방 이동과 뒤로 가기에도 유지하는 앱 단위 닉네임 점유
     private NicknameReservation nicknameReservation;
     private bool isRoomAccepted;
+    private bool isInitialMenuSceneReady;
     public string Nickname { get; private set; } = "";
     public string NicknameError { get; private set; } = "";
     public bool HasNickname => this.nicknameReservation != null && this.nicknameReservation.IsHeld;
@@ -914,6 +915,7 @@ public sealed class SharedSession : MonoBehaviour, INetworkRunnerCallbacks
         // 이전 참가자와 방 권한 참조 및 Scene 로딩 상태를 함께 초기화
         this.players.Clear();
         this.isRoomAccepted = false;
+        this.isInitialMenuSceneReady = false;
         this.roomState = null;
         IsSceneLoading = false;
     }
@@ -1009,8 +1011,9 @@ public sealed class SharedSession : MonoBehaviour, INetworkRunnerCallbacks
     // 닉네임 점유와 방 생성 결과를 확인한 로컬 플레이어만 스폰
     private void SpawnLocalPlayer(NetworkRunner runner)
     {
-        // 이전 연결과 중복 스폰 및 닉네임 없는 진입 차단
+        // 초기 씬 등록 완료 전 스폰과 이전 연결 및 중복 스폰 차단
         if (runner != this.runner || !HasNickname || !this.isRoomAccepted ||
+            !this.isInitialMenuSceneReady || IsSceneLoading ||
             runner.TryGetPlayerObject(runner.LocalPlayer, out _))
         {
             return;
@@ -1107,6 +1110,15 @@ public sealed class SharedSession : MonoBehaviour, INetworkRunnerCallbacks
         if (SceneManager.GetSceneByPath(this.gameScenePath).isLoaded)
         {
             CurrentScreen = Screen.Game;
+        }
+        else if (SceneManager.GetSceneByPath(this.menuScenePath).isLoaded)
+        {
+            // 초기 씬 정리가 끝난 뒤에만 스폰한다. 입장 승인과 씬 완료의 도착 순서는 무관하다.
+            this.isInitialMenuSceneReady = true;
+            if (this.isRoomAccepted)
+            {
+                SpawnLocalPlayer(runner);
+            }
         }
 
         // 최종 화면과 버튼 상태를 UI에 전달
