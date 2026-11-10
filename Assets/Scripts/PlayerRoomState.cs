@@ -27,7 +27,8 @@ public sealed class PlayerRoomState : NetworkBehaviour
         // 로컬 입장 콜백에서 받은 식별자로 닉네임과 방장 자동 준비 데이터 구성
         Player = player;
         Nickname = SharedSession.Instance.Nickname;
-        IsReady = Runner.IsSharedModeMasterClient;
+        IsReady = Runner.IsSharedModeMasterClient && SharedSession.Instance.RoomState != null &&
+            SharedSession.Instance.RoomState.IsMasterSettled;
     }
 
 
@@ -80,6 +81,7 @@ public sealed class PlayerRoomState : NetworkBehaviour
     {
         if (Object == null || !Object.IsValid || !Object.HasStateAuthority ||
             Runner == null || !Runner.IsRunning || Player != Runner.LocalPlayer ||
+            this.session == null || this.session.RoomState == null || !this.session.RoomState.IsMasterSettled ||
             !Runner.IsSharedModeMasterClient || IsReady)
         {
             return;

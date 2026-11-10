@@ -15,12 +15,22 @@ public sealed class RoomGameState : NetworkBehaviour, IStateAuthorityChanged
     // 로컬 세션 참조
     private SharedSession session;
 
+    // SetMasterClient 요청이 반영되기 전 같은 대상에게 중복 요청 방지
+    private PlayerRef requestedMaster;
+    private PlayerRef renderedMaster;
+    private bool renderedMasterSettled;
+
+    // Fusion이 임시로 지정한 방장의 승계가 끝난 뒤에만 준비와 시작 허용
+    public bool IsMasterSettled => Runner != null && Runner.IsRunning &&
+        Runner.GetMasterClient() != PlayerRef.None && Runner.GetMasterClient() == GetNextMaster();
+
     // 방장 권한과 플레이어 준비 조건 조회
     public bool CanStart => this.session != null &&
         Object != null &&
         Object.IsValid &&
         Object.HasStateAuthority &&
         Runner.IsSharedModeMasterClient &&
+        IsMasterSettled &&
         !IsStarting &&
         this.session.CurrentScreen == SharedSession.Screen.Room &&
         !this.session.IsBusy &&
@@ -44,8 +54,62 @@ public sealed class RoomGameState : NetworkBehaviour, IStateAuthorityChanged
     // 새 Master Client로의 State Authority 이전 통지
     public void StateAuthorityChanged()
     {
+        this.requestedMaster = PlayerRef.None;
         // 이전받은 State Authority를 기준으로 방장 표시와 시작 버튼 재평가 요청
         OnRoomChanged();
+    }
+
+
+    // 콜백과 권한 이전의 도착 순서에 관계없이 현재 방장이 최종 승계를 완료
+    public override void FixedUpdateNetwork()
+    {
+        if (!Object.HasStateAuthority || !Runner.IsSharedModeMasterClient)
+        {
+            return;
+        }
+
+        PlayerRef next = GetNextMaster();
+        if (next == PlayerRef.None || next == Runner.LocalPlayer)
+        {
+            this.requestedMaster = PlayerRef.None;
+            return;
+        }
+
+        if (this.requestedMaster != next)
+        {
+            Runner.SetMasterClient(next);
+            this.requestedMaster = next;
+        }
+    }
+
+
+    // Fusion의 방장 지정과 객체 권한 변경이 서로 다른 시점에 도착해도 UI 갱신
+    public override void Render()
+    {
+        PlayerRef master = Runner.GetMasterClient();
+        bool settled = IsMasterSettled;
+        if (this.renderedMaster != master || this.renderedMasterSettled != settled)
+        {
+            this.renderedMaster = master;
+            this.renderedMasterSettled = settled;
+            OnRoomChanged();
+        }
+    }
+
+
+    // Fusion 2의 재사용되지 않는 PlayerRef는 실제 입장 순서이며 UI 정렬과 무관
+    private PlayerRef GetNextMaster()
+    {
+        PlayerRef next = PlayerRef.None;
+        foreach (PlayerRef player in Runner.ActivePlayers)
+        {
+            if (next == PlayerRef.None || player.RawEncoded < next.RawEncoded)
+            {
+                next = player;
+            }
+        }
+
+        return next;
     }
 
 
